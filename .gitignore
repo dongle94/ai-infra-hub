@@ -15,7 +15,8 @@ Desktop.ini
 .idea/
 
 # Workspace (MCP filesystem mount)
-workspace/
+workspace/*
+!workspace/.gitkeep
 
 # Claude Code
 .claude/

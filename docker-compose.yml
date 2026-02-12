@@ -1,0 +1,75 @@
+# =============================================================================
+# AI Infra Hub - Docker Compose (Phase 1: CPU-only MVP)
+# =============================================================================
+# Ollama + Open WebUI 기본 구성 (GPU 설정 없음)
+# Phase 2 GPU 설정: docker-compose.gpu.yml 오버라이드 파일 사용
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# 사전 준비 (건너뛰면 컨테이너 시작 오류 발생):
+#   docker volume create ollama-models
+#   docker volume create open-webui-data
+#   copy .env.example .env  (Windows)
+#   .env 파일에서 WEBUI_SECRET_KEY 값을 반드시 변경하세요
+#
+# 실행:
+#   docker compose up -d
+#
+# 접속:
+#   http://127.0.0.1:3000 (최초 접속 시 관리자 계정 생성 화면이 표시됩니다)
+# =============================================================================
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    # 포트 미노출: Ollama API는 Docker 내부 네트워크에서만 접근 가능 (보안)
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - ai-infra
+    environment:
+      - OLLAMA_KEEP_ALIVE=5m
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "127.0.0.1:3000:8080"    # 로컬호스트만 접근 허용
+    volumes:
+      - open-webui-data:/app/backend/data
+    networks:
+      - ai-infra
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      # 최초 관리자 계정 생성 후 Admin 패널 > Settings > General에서 신규 가입 비활성화
+      # (ENABLE_PERSISTENT_CONFIG=True 기본 동작으로, 이후 DB 설정이 우선 적용됨)
+      - ENABLE_SIGNUP=true
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  ai-infra:
+    driver: bridge
+
+# Named Volumes (external: true → docker volume create로 사전 생성 필수)
+# 실수로 docker compose down -v 시 데이터 삭제를 방지합니다.
+volumes:
+  ollama-models:
+    external: true
+  open-webui-data:
+    external: true
