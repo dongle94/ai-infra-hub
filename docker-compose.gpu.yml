@@ -1,0 +1,38 @@
+# =============================================================================
+# AI Infra Hub - Docker Compose GPU Override (Phase 2: NVIDIA GPU 가속)
+# =============================================================================
+# 이 파일은 docker-compose.yml의 오버라이드 파일입니다.
+# ollama 서비스에 NVIDIA GPU 예약 설정만 추가합니다.
+#
+# 사용법 (Usage):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# 사전 준비 (Prerequisites):
+#   1. NVIDIA 드라이버 설치 확인 (nvidia-smi 명령으로 확인)
+#      - 현재 환경: NVIDIA RTX 3090 Ti, Driver v591.86
+#   2. Docker Desktop > Settings > Resources > GPU 체크박스 활성화
+#   3. NVIDIA Container Toolkit 설치 (Docker Desktop이 자동 처리)
+#      - 수동 확인: docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+#
+# GPU 지원 여부 사전 확인 명령:
+#   docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+#
+# CPU 전용 모드로 복귀:
+#   docker compose up -d
+#   (docker-compose.yml만 단독 사용하면 GPU 설정 없이 CPU 모드로 동작)
+# =============================================================================
+
+services:
+  ollama:
+    # GPU 리소스 예약: NVIDIA GPU 전체 할당
+    # count: all → 시스템의 모든 NVIDIA GPU를 컨테이너에 노출
+    # capabilities: [gpu] → NVIDIA GPU 연산 기능 활성화
+    # 참고: GPU 모드에서 VRAM 점유 유지 시간은 docker-compose.yml의
+    #       OLLAMA_KEEP_ALIVE 환경 변수로 제어됨 (기본 5m)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
