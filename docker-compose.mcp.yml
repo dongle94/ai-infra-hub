@@ -1,0 +1,84 @@
+# =============================================================================
+# AI Infra Hub - Docker Compose MCP Override (Phase 4: MCP 서버 연동)
+# =============================================================================
+# 이 파일은 docker-compose.yml의 오버라이드 파일입니다.
+# MCP(Model Context Protocol) 서버 두 개를 ai-infra 네트워크에 추가합니다.
+#
+# [supergateway 역할]
+#   MCP 서버는 기본적으로 stdio(표준 입출력) 방식으로 동작합니다.
+#   supergateway는 stdio 기반 MCP 서버를 SSE(Server-Sent Events) HTTP 엔드포인트로
+#   변환해주는 브리지입니다. Open WebUI가 HTTP를 통해 MCP 도구를 호출할 수 있도록
+#   stdio → SSE 프록시 역할을 수행합니다.
+#
+#   [Open WebUI] --HTTP/SSE--> [supergateway :8000] --stdio--> [MCP Server Process]
+#
+# 추가되는 서비스:
+#   - mcp-filesystem : 로컬 workspace 디렉터리 파일 읽기/쓰기 도구
+#   - mcp-fetch      : 외부 URL 콘텐츠 조회 도구
+#
+# 두 서비스 모두 포트를 호스트에 노출하지 않습니다.
+# Open WebUI는 ai-infra 내부 네트워크를 통해 컨테이너명으로 직접 접근합니다.
+#   - http://mcp-filesystem:8000/sse
+#   - http://mcp-fetch:8000/sse
+#
+# 사용법 (Usage):
+#   # GPU 없이 MCP만 추가
+#   docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d
+#
+#   # GPU + MCP 모두 활성화
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.mcp.yml up -d
+#
+# MCP 서버만 재시작할 경우:
+#   docker compose -f docker-compose.yml -f docker-compose.mcp.yml restart mcp-filesystem mcp-fetch
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # mcp-filesystem: 파일시스템 접근 MCP 서버
+  # ---------------------------------------------------------------------------
+  # @modelcontextprotocol/server-filesystem이 /workspace 경로를 도구로 노출합니다.
+  # supergateway가 해당 stdio 프로세스를 SSE HTTP 서버(:8000)로 감쌉니다.
+  # workspace/ 볼륨은 읽기 전용이 아닙니다 — 에이전트가 파일을 생성/수정할 수 있습니다.
+  # ---------------------------------------------------------------------------
+  mcp-filesystem:
+    image: node:20-alpine
+    container_name: mcp-filesystem
+    # supergateway가 내부 stdio MCP 서버를 :8000 SSE 엔드포인트로 래핑
+    command: >
+      npx -y supergateway
+      --stdio "npx -y @modelcontextprotocol/server-filesystem /workspace"
+      --port 8000
+      --outputTransport streamableHttp
+    volumes:
+      # 호스트의 ./workspace 디렉터리를 컨테이너 /workspace에 마운트
+      # 에이전트가 파일을 쓸 수 있도록 읽기-쓰기 권한 부여 (기본값)
+      - ./workspace:/workspace
+    networks:
+      - ai-infra
+    # 포트 외부 노출 없음: Open WebUI가 내부 네트워크에서 http://mcp-filesystem:8000 으로 직접 접근
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # mcp-fetch: 외부 URL 조회 MCP 서버
+  # ---------------------------------------------------------------------------
+  # mcp-server-fetch는 PyPI 패키지 (npm 미존재)이므로 Dockerfile.mcp-fetch를 통해
+  # node:20-slim + uv(Python 패키지 관리자)를 결합한 커스텀 이미지를 빌드합니다.
+  # supergateway(Node.js)가 uvx mcp-server-fetch(Python)를 stdio로 실행하고
+  # SSE HTTP 서버(:8000)로 노출합니다.
+  # ---------------------------------------------------------------------------
+  mcp-fetch:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp-fetch
+    container_name: mcp-fetch
+    networks:
+      - ai-infra
+    # 포트 외부 노출 없음: Open WebUI가 내부 네트워크에서 http://mcp-fetch:8000 으로 직접 접근
+    restart: unless-stopped
+
+networks:
+  # 기존 ai-infra 네트워크 참조 (docker-compose.yml에서 정의됨)
+  # external: true 없이 선언하면 Compose가 동일 네트워크로 병합합니다.
+  ai-infra:
+    driver: bridge

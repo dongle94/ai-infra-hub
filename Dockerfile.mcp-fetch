@@ -1,0 +1,26 @@
+# =============================================================================
+# Dockerfile.mcp-fetch
+# =============================================================================
+# mcp-server-fetch(Python)를 supergateway(Node.js)로 래핑하기 위한 이미지.
+#
+# mcp-server-fetch는 PyPI 패키지(@modelcontextprotocol/server-fetch는 npm 미존재)이므로
+# Node.js 기반 이미지 위에 uv(Python 패키지 관리자)를 추가 설치합니다.
+#
+# 실행 흐름:
+#   supergateway (Node.js) --stdio--> uvx mcp-server-fetch (Python)
+# =============================================================================
+
+FROM node:20-slim
+
+# uv 설치에 필요한 curl, ca-certificates 추가 후 정리
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# uv 설치 (uvx 명령 포함)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+CMD ["npx", "-y", "supergateway", "--stdio", "uvx mcp-server-fetch", "--port", "8000", "--outputTransport", "streamableHttp"]
