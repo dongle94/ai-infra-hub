@@ -2,24 +2,28 @@
 # AI Infra Hub - Docker Compose MCP Override (Phase 4: MCP 서버 연동)
 # =============================================================================
 # 이 파일은 docker-compose.yml의 오버라이드 파일입니다.
-# MCP(Model Context Protocol) 서버 두 개를 ai-infra 네트워크에 추가합니다.
+# MCP(Model Context Protocol) 서버를 ai-infra 네트워크에 추가합니다.
 #
 # [supergateway 역할]
 #   MCP 서버는 기본적으로 stdio(표준 입출력) 방식으로 동작합니다.
-#   supergateway는 stdio 기반 MCP 서버를 SSE(Server-Sent Events) HTTP 엔드포인트로
+#   supergateway는 stdio 기반 MCP 서버를 Streamable HTTP 엔드포인트로
 #   변환해주는 브리지입니다. Open WebUI가 HTTP를 통해 MCP 도구를 호출할 수 있도록
-#   stdio → SSE 프록시 역할을 수행합니다.
+#   stdio → Streamable HTTP 프록시 역할을 수행합니다.
 #
-#   [Open WebUI] --HTTP/SSE--> [supergateway :8000] --stdio--> [MCP Server Process]
+#   [Open WebUI] --HTTP(/mcp)--> [supergateway :8000] --stdio--> [MCP Server Process]
 #
-# 추가되는 서비스:
+# 추가되는 서비스 (로컬 컨테이너):
 #   - mcp-filesystem : 로컬 workspace 디렉터리 파일 읽기/쓰기 도구
 #   - mcp-fetch      : 외부 URL 콘텐츠 조회 도구
 #
+# 원격 MCP 서비스 (컨테이너 불필요, Open WebUI에 URL 직접 등록):
+#   - Tavily Search  : https://mcp.tavily.com/mcp/?tavilyApiKey=<TAVILY_API_KEY>
+#                      (월 1,000건 무료 / https://app.tavily.com/)
+#
 # 두 서비스 모두 포트를 호스트에 노출하지 않습니다.
 # Open WebUI는 ai-infra 내부 네트워크를 통해 컨테이너명으로 직접 접근합니다.
-#   - http://mcp-filesystem:8000/sse
-#   - http://mcp-fetch:8000/sse
+#   - http://mcp-filesystem:8000/mcp
+#   - http://mcp-fetch:8000/mcp
 #
 # 사용법 (Usage):
 #   # GPU 없이 MCP만 추가
